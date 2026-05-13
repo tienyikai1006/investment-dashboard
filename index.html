@@ -279,19 +279,76 @@
 
 
 /* Google 登入 / Firebase 同步狀態 */
-.cloud-auth{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.cloud-auth{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;position:relative;z-index:9999;pointer-events:auto}
 .cloud-status{min-width:160px;text-align:right;color:var(--muted);font-size:12px;line-height:1.45}
 .cloud-status strong{display:block;color:var(--text);font-size:13px;margin-bottom:2px}
 .cloud-status.ok strong{color:var(--green)}
 .cloud-status.warn strong{color:var(--yellow)}
 .cloud-status.err strong{color:var(--red)}
-.cloud-btn{height:42px;border-radius:15px;border:1px solid var(--line);background:var(--panel2);color:var(--text);padding:0 14px;cursor:pointer;font-size:13px;font-weight:850}
+.cloud-btn{height:42px;border-radius:15px;border:1px solid var(--line);background:var(--panel2);color:var(--text);padding:0 14px;cursor:pointer;font-size:13px;font-weight:850;position:relative;z-index:10000;pointer-events:auto;touch-action:manipulation}
 .cloud-btn.primary{background:#f4f7fb;color:#0b0d12;border-color:#f4f7fb}
 .cloud-btn.hidden{display:none!important}
 @media(max-width:760px){.cloud-auth{justify-content:flex-start}.cloud-status{text-align:left;min-width:100%}.cloud-btn{width:100%}}
+
+
+
+
+/* 鎖頭極簡登入畫面：駭客金融風 */
+body.auth-locked{overflow:hidden}
+body.auth-locked .dashboard{filter:blur(10px) brightness(.45) saturate(.75);pointer-events:none;user-select:none}
+.auth-gate{position:fixed;inset:0;z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;background:radial-gradient(circle at 50% 50%,rgba(30,255,180,.08),transparent 24%),radial-gradient(circle at 50% 10%,rgba(64,220,255,.07),transparent 20%),linear-gradient(180deg,#040807 0%,#050b0c 48%,#030707 100%);overflow:hidden}
+.auth-gate.hidden{display:none!important}
+.auth-gate::before{content:"";position:absolute;inset:0;background:linear-gradient(rgba(18,255,182,.05) 1px, transparent 1px),linear-gradient(90deg, rgba(18,255,182,.05) 1px, transparent 1px);background-size:48px 48px;opacity:.22;transform:perspective(900px) rotateX(76deg) scale(1.45) translateY(18%);transform-origin:center bottom;pointer-events:none}
+.auth-gate::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(180deg,rgba(255,255,255,.022) 0 1px,transparent 1px 4px);mix-blend-mode:screen;opacity:.24;pointer-events:none}
+.auth-noise,.auth-orbit,.auth-finance-lines{position:absolute;inset:0;pointer-events:none}
+.auth-noise{background:radial-gradient(circle at 20% 30%,rgba(58,236,255,.08),transparent 10%),radial-gradient(circle at 75% 25%,rgba(34,255,149,.07),transparent 12%),radial-gradient(circle at 80% 78%,rgba(58,236,255,.08),transparent 12%),radial-gradient(circle at 18% 78%,rgba(34,255,149,.05),transparent 14%)}
+.auth-orbit::before,.auth-orbit::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border-radius:999px;border:1px solid rgba(61,255,184,.14)}
+.auth-orbit::before{width:min(44vw,420px);height:min(44vw,420px);box-shadow:0 0 28px rgba(18,255,182,.08), inset 0 0 22px rgba(18,255,182,.04)}
+.auth-orbit::after{width:min(54vw,560px);height:min(54vw,560px);border-color:rgba(63,223,255,.10)}
+.auth-finance-lines::before,.auth-finance-lines::after{content:"";position:absolute;height:1px;left:8%;right:8%;background:linear-gradient(90deg,transparent,rgba(66,255,208,.22),transparent)}
+.auth-finance-lines::before{top:18%}
+.auth-finance-lines::after{bottom:18%}
+.auth-gate-shell{position:relative;z-index:2;display:flex;align-items:center;justify-content:center}
+.auth-lock-btn{position:relative;width:140px;height:140px;border-radius:36px;border:1px solid rgba(80,255,200,.24);background:linear-gradient(180deg,rgba(8,26,24,.88),rgba(5,16,16,.92));box-shadow:0 0 0 1px rgba(114,255,219,.06) inset,0 24px 60px rgba(0,0,0,.45),0 0 34px rgba(32,255,180,.08);display:grid;place-items:center;cursor:pointer;transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;backdrop-filter:blur(8px)}
+.auth-lock-btn:hover{transform:translateY(-2px) scale(1.02);border-color:rgba(103,255,222,.42);box-shadow:0 0 0 1px rgba(114,255,219,.10) inset,0 32px 80px rgba(0,0,0,.52),0 0 46px rgba(32,255,180,.16)}
+.auth-lock-btn:active{transform:scale(.985)}
+.auth-lock-btn::before{content:"";position:absolute;inset:10px;border-radius:28px;border:1px solid rgba(66,255,209,.08)}
+.auth-lock-btn::after{content:"";position:absolute;inset:-18px;border-radius:44px;border:1px solid rgba(59,235,255,.10);box-shadow:0 0 60px rgba(27,255,192,.05)}
+.auth-lock-icon{position:relative;width:54px;height:66px}
+.auth-lock-icon::before{content:"";position:absolute;left:50%;transform:translateX(-50%);top:-20px;width:34px;height:28px;border:6px solid rgba(160,255,233,.92);border-bottom:none;border-radius:22px 22px 0 0;box-shadow:0 0 16px rgba(120,255,223,.22)}
+.auth-lock-icon::after{content:"";position:absolute;left:0;right:0;bottom:0;height:46px;border-radius:14px;background:linear-gradient(180deg,rgba(171,255,235,.96),rgba(83,255,201,.82));box-shadow:0 0 18px rgba(112,255,220,.26)}
+.auth-lock-core{position:absolute;left:50%;top:40px;transform:translateX(-50%);z-index:2;width:10px;height:10px;border-radius:99px;background:#0a1715;box-shadow:0 0 0 4px rgba(8,21,20,.35)}
+.auth-lock-core::after{content:"";position:absolute;left:50%;transform:translateX(-50%);top:8px;width:4px;height:10px;border-radius:4px;background:#0a1715}
+.auth-lock-pulse{position:absolute;inset:0;border-radius:36px;border:1px solid rgba(73,255,204,.18);animation:lockPulse 2.4s ease-out infinite}
+.auth-lock-pulse.p2{animation-delay:1.2s}
+.auth-lock-status{position:absolute;left:50%;transform:translateX(-50%);bottom:-36px;width:220px;display:flex;justify-content:center}
+.auth-lock-status .cloud-status{min-width:0;text-align:center;color:#7fe2c5;font-size:0;line-height:0}
+.auth-lock-status .cloud-status strong,.auth-lock-status .cloud-status span{font-size:0;line-height:0;color:transparent}
+.auth-lock-status .cloud-status.ok::before,.auth-lock-status .cloud-status.warn::before,.auth-lock-status .cloud-status.err::before{font-size:0}
+.auth-hidden-logout{display:none!important}
+@keyframes lockPulse{0%{transform:scale(1);opacity:.65}100%{transform:scale(1.24);opacity:0}}
+@media(max-width:760px){.auth-lock-btn{width:124px;height:124px;border-radius:32px}.auth-lock-btn::before{border-radius:24px}.auth-lock-btn::after{border-radius:40px}.auth-lock-status{bottom:-28px;width:180px}}
+
 </style>
 </head>
-<body>
+<body class="auth-locked">
+
+<div class="auth-gate" id="authGate">
+  <div class="auth-noise"></div>
+  <div class="auth-orbit"></div>
+  <div class="auth-finance-lines"></div>
+  <div class="auth-gate-shell">
+    <button class="auth-lock-btn" type="button" id="gateGoogleLoginBtn" aria-label="Google 登入">
+      <span class="auth-lock-pulse"></span>
+      <span class="auth-lock-pulse p2"></span>
+      <span class="auth-lock-icon"><span class="auth-lock-core"></span></span>
+    </button>
+    <button class="auth-hidden-logout hidden" type="button" id="gateGoogleLogoutBtn" aria-label="登出"></button>
+    <div class="auth-lock-status">
+      <div class="cloud-status warn" id="gateStatus"><strong>尚未登入</strong><span>請先使用 Google 登入。</span></div>
+    </div>
+  </div>
+</div>
 <div class="dashboard"><div class="shell">
   <aside class="sidebar">
     <div class="brand"><button class="logo" type="button" id="avatarButton"><span>Y</span><img id="avatarPreview" alt="avatar" /></button><input id="avatarInput" type="file" accept="image/*" style="display:none"/><div><h1>YiKai Assets</h1><p>個人資產主頁</p></div></div>
@@ -303,7 +360,7 @@
     </div>
   </aside>
   <main class="main">
-    <section class="topbar"><div><div class="eyebrow" id="pageEyebrow">Desktop Financial Command Center</div><h1 class="title" id="pageTitle">個人財務總覽</h1></div><div class="cloud-auth"><div class="cloud-status warn" id="cloudStatus"><strong>尚未登入</strong><span>登入 Google 後同步 Firebase</span></div><button class="cloud-btn primary" type="button" id="googleLoginBtn">Google 登入</button><button class="cloud-btn hidden" type="button" id="googleLogoutBtn">登出</button></div></section>
+    <section class="topbar"><div><div class="eyebrow" id="pageEyebrow">Desktop Financial Command Center</div><h1 class="title" id="pageTitle">個人財務總覽</h1></div><div class="cloud-auth"><div class="cloud-status warn" id="cloudStatus"><strong>尚未登入</strong><span>登入 Google 後同步 Firebase</span></div><button class="cloud-btn primary" type="button" id="googleLoginBtn">用 Google 登入</button><button class="cloud-btn hidden" type="button" id="googleLogoutBtn">登出</button></div></section>
     
 
     <section class="card card-pad" id="assetDetailCard">
@@ -761,19 +818,19 @@ Object.assign(window,{showAssetDetail,showAssetOverviewPage,showResearchPage,sho
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-  import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
   import { getDatabase, ref, get, set, onValue } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
   const ALLOWED_EMAIL = "tienyikai1006@gmail.com";
   const DATA_PATH = "finance/investmentDashboard";
   const firebaseConfig = {
-    apiKey: "AIzaSyBFHNr5eR3c5vpe8FQARpPusJ28liL0Pk0",
-    authDomain: "yikai-finance.firebaseapp.com",
-    databaseURL: "https://yikai-finance-default-rtdb.firebaseio.com",
-    projectId: "yikai-finance",
-    storageBucket: "yikai-finance.firebasestorage.app",
-    messagingSenderId: "249490390173",
-    appId: "1:249490390173:web:ff0a0295154794e4532874"
+    apiKey: "AIzaSyBk_uw3tfA16SaC2n7Lx44JPJm-OuOaviA",
+    authDomain: "yikai-private.firebaseapp.com",
+    databaseURL: "https://yikai-private-default-rtdb.firebaseio.com",
+    projectId: "yikai-private",
+    storageBucket: "yikai-private.firebasestorage.app",
+    messagingSenderId: "929733725792",
+    appId: "1:929733725792:web:52d5729e78f872e4dfbd05"
   };
 
   const app = initializeApp(firebaseConfig);
@@ -784,31 +841,77 @@ Object.assign(window,{showAssetDetail,showAssetOverviewPage,showResearchPage,sho
 
   const loginBtn = document.getElementById("googleLoginBtn");
   const logoutBtn = document.getElementById("googleLogoutBtn");
+  const gateLoginBtn = document.getElementById("gateGoogleLoginBtn");
+  const gateLogoutBtn = document.getElementById("gateGoogleLogoutBtn");
+  const authGate = document.getElementById("authGate");
+  const gateStatus = document.getElementById("gateStatus");
+
+  const setGateLocked = (locked) => {
+    document.body.classList.toggle("auth-locked", locked);
+    authGate?.classList.toggle("hidden", !locked);
+    if (locked) window.scrollTo({ top: 0, behavior: "auto" });
+  };
+
+  const syncGateButtons = (loggedIn) => {
+    gateLoginBtn?.classList.toggle("hidden", loggedIn);
+    gateLogoutBtn?.classList.toggle("hidden", !loggedIn);
+  };
+
   const setStatus = (title, desc = "", kind = "warn") => {
     if (typeof window.setCloudSyncStatus === "function") window.setCloudSyncStatus(title, desc, kind);
     else {
       const el = document.getElementById("cloudStatus");
       if (el) { el.className = `cloud-status ${kind}`; el.innerHTML = `<strong>${title}</strong><span>${desc}</span>`; }
     }
+    if (gateStatus) { gateStatus.className = `cloud-status ${kind}`; gateStatus.innerHTML = `<strong>${title}</strong><span>${desc}</span>`; }
   };
 
   let dataRef = null;
   let ignoreNextSnapshot = false;
 
-  loginBtn?.addEventListener("click", async () => {
+  // Google 登入：優先彈窗；如果瀏覽器阻擋彈窗，就改用跳轉登入
+  async function startGoogleLogin() {
+    if (location.protocol === "file:") {
+      const msg = "你現在是直接開本機 HTML 檔案（file://），Google 登入可能不會正常運作。請先上傳到 GitHub Pages，或用 localhost 開啟。";
+      setStatus("登入失敗", msg, "err");
+      alert(msg);
+      return;
+    }
+
     try {
       setStatus("登入中", "正在開啟 Google 登入視窗", "warn");
       await signInWithPopup(auth, provider);
     } catch (error) {
       console.error("Google 登入失敗", error);
+      const code = String(error.code || "");
+      if (code.includes("popup-blocked") || code.includes("popup-closed") || code.includes("operation-not-supported")) {
+        setStatus("改用跳轉登入", "瀏覽器阻擋彈窗，改用 Google 跳轉登入", "warn");
+        await signInWithRedirect(auth, provider);
+        return;
+      }
+
       let msg = error.message || "請確認 Google 登入已啟用";
-      if (String(error.code).includes("unauthorized-domain")) msg = "目前網址未加入 Firebase 授權網域，請到 Authentication → Settings → Authorized domains 新增你的網址。";
+      if (code.includes("unauthorized-domain")) msg = "目前網址未加入 Firebase 授權網域。請到 Authentication → Settings → Authorized domains 新增你的網址，例如 tienyikai1006.github.io。";
       setStatus("登入失敗", msg, "err");
       alert(msg);
     }
+  }
+
+  loginBtn?.addEventListener("click", startGoogleLogin);
+  gateLoginBtn?.addEventListener("click", startGoogleLogin);
+
+  getRedirectResult(auth).catch((error) => {
+    console.error("Google 跳轉登入失敗", error);
+    let msg = error.message || "Google 跳轉登入失敗";
+    if (String(error.code || "").includes("unauthorized-domain")) msg = "目前網址未加入 Firebase 授權網域，請到 Authentication → Settings → Authorized domains 新增你的 GitHub Pages 網域。";
+    setStatus("登入失敗", msg, "err");
   });
 
   logoutBtn?.addEventListener("click", async () => {
+    await signOut(auth);
+  });
+
+  gateLogoutBtn?.addEventListener("click", async () => {
     await signOut(auth);
   });
 
@@ -836,13 +939,17 @@ Object.assign(window,{showAssetDetail,showAssetOverviewPage,showResearchPage,sho
       dataRef = null;
       loginBtn?.classList.remove("hidden");
       logoutBtn?.classList.add("hidden");
-      setStatus("尚未登入", "登入 Google 後同步 Firebase", "warn");
+      syncGateButtons(false);
+      setGateLocked(true);
+      setStatus("尚未登入", "登入 Google 後才可進入私人頁面", "warn");
       return;
     }
 
     if (user.email !== ALLOWED_EMAIL) {
       loginBtn?.classList.remove("hidden");
       logoutBtn?.classList.add("hidden");
+      syncGateButtons(false);
+      setGateLocked(true);
       setStatus("帳號不允許", `目前登入：${user.email || "未知帳號"}`, "err");
       alert(`這份金融資料只允許 ${ALLOWED_EMAIL} 使用。`);
       await signOut(auth);
@@ -851,6 +958,8 @@ Object.assign(window,{showAssetDetail,showAssetOverviewPage,showResearchPage,sho
 
     loginBtn?.classList.add("hidden");
     logoutBtn?.classList.remove("hidden");
+    syncGateButtons(true);
+    setGateLocked(false);
     setStatus("已登入", user.email, "ok");
     dataRef = ref(db, DATA_PATH);
 
