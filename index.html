@@ -460,9 +460,9 @@ body.auth-locked .dashboard{filter:blur(10px) brightness(.45) saturate(.75);poin
 @media(max-width:760px){.inline-amount-cell{grid-template-columns:40px 118px!important;width:168px!important}.inline-amount-prefix{width:40px!important}}
 </style>
 </head>
-<body class="auth-locked">
+<body>
 
-<div class="auth-gate" id="authGate">
+<div class="auth-gate hidden" id="authGate">
   <div class="auth-noise"></div>
   <div class="auth-orbit"></div>
   <div class="auth-finance-lines"></div>
@@ -1538,4 +1538,4 @@ Object.assign(window,{showAssetDetail,showAssetOverviewPage,showResearchPage,sho
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
   import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-  import { getDatabase, ref, get, set, onValue } f
+  import { getDatabase, ref, get, set, onValue } from "https://
