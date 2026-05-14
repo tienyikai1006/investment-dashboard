@@ -1016,8 +1016,13 @@ Object.assign(window,{showAssetDetail,showAssetOverviewPage,showResearchPage,sho
   };
   window.getDebtCardDisplayAmount = function(row){
     if(window.isInstallmentRow(row)){
-      const total=window.getInstallmentTotal(row), months=window.getInstallmentMonths(row)||1;
-      return Math.round(total/months);
+      // 分期卡片主金額顯示「目前未繳總額」，不是每月金額。
+      // 例：總額 200 / 5 期 → 主金額顯示 200，每月扣 40。
+      const remaining=toNumber(row?.amount);
+      if(remaining>0)return remaining;
+      const months=window.getInstallmentMonths(row)||1;
+      const remain=window.getInstallmentRemainingMonths(row)||months;
+      return Math.max(0,Math.round(window.getInstallmentTotal(row)/months)*remain);
     }
     return toNumber(row?.amount);
   };
@@ -1026,8 +1031,8 @@ Object.assign(window,{showAssetDetail,showAssetOverviewPage,showResearchPage,sho
       const total=window.getInstallmentTotal(row);
       const months=window.getInstallmentMonths(row)||1;
       const remain=window.getInstallmentRemainingMonths(row);
-      const monthly=window.getDebtCardDisplayAmount(row);
-      const remainingBalance=Math.max(0,monthly*remain);
+      const monthly=Math.round(total/months);
+      const remainingBalance=window.getDebtCardDisplayAmount(row);
       return `${escapeHtml(row.note||"設備或消費分期")}・總額 ${formatTwd(total)} ／ ${months} 期・每月約 ${formatTwd(monthly)}<div class="installment-countdown-line">剩餘 ${remain} 期・未繳約 ${formatTwd(remainingBalance)}・開始 ${window.getInstallmentStartMonth(row)}</div>`;
     }
     return escapeHtml(row?.note||"--");
@@ -1108,7 +1113,7 @@ Object.assign(window,{showAssetDetail,showAssetOverviewPage,showResearchPage,sho
     window.normalizeAllInstallments(false);
     const rows=assetDetails.debt.rows,total=categoryTotal("debt"),em=["💳","🧾","🪙","📌"];
     debtCuteGrid.innerHTML=rows.map((r,i)=>{
-      const amount=toNumber(r.amount),displayAmount=window.getDebtCardDisplayAmount(r),pct=total?amount/total*100:0,ch=toNumber(r.monthlyChange),detailNote=window.getDebtCardNote(r),meta=window.isInstallmentRow(r)?`<div class="debt-card-meta">分期倒數：每跨一個月份自動少 1 期</div>`:"";
+      const amount=toNumber(r.amount),displayAmount=window.getDebtCardDisplayAmount(r),pct=total?amount/total*100:0,ch=toNumber(r.monthlyChange),detailNote=window.getDebtCardNote(r),meta=window.isInstallmentRow(r)?`<div class="debt-card-meta">主金額顯示未繳總額；每跨一個月份自動少 1 期</div>`:"";
       return`<div class="debt-cute-card"><div class="debt-card-top"><div><div class="debt-card-title">${escapeHtml(r.name)}</div><div class="debt-card-value">${formatTwd(displayAmount)}</div>${meta}</div><div class="debt-emoji">${em[i]||"💰"}</div></div><div class="debt-card-note">${detailNote}・本月變化 <span class="${monthlyChangeClass(ch)}">${ch>=0?"+":""}${formatPercent(ch)}</span></div><div class="debt-progress"><div class="debt-progress-fill" style="width:${pct.toFixed(1)}%"></div></div></div>`;
     }).join("");
     if(typeof renderDebtCharts === "function") renderDebtCharts(rows);
