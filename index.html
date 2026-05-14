@@ -698,8 +698,8 @@ function migrateFinanceData(){
   assetDetails.debt.rows.forEach(row=>{
     if(!row||!String(row.name||"").includes("分期"))return;
     const currentAmount=toNumber(row.amount);
-    if(!toNumber(row.installmentTotal))row.installmentTotal=currentAmount||18000;
-    if(!toNumber(row.installmentMonths))row.installmentMonths=12;
+    if(row.installmentTotal===undefined||row.installmentTotal===null||row.installmentTotal==="")row.installmentTotal=currentAmount||0;
+    if(row.installmentMonths===undefined||row.installmentMonths===null||row.installmentMonths==="")row.installmentMonths=12;
     row.amount=toNumber(row.installmentTotal);
   });
 }
@@ -711,7 +711,10 @@ function collectFinanceData(){
     assetDetails:clonePlainData(assetDetails),
     usPositions:clonePlainData(usPositions),
     realizedTrades:clonePlainData(realizedTrades),
-    stockQuotes:clonePlainData(stockQuotes),
+    // Firebase Realtime Database 的 key 不能包含 . # $ [ ] /，
+    // 台股代號如 0050.TW 不能直接當物件 key 存到 Firebase。
+    // 改存成陣列，載入時再用 symbol 還原成 stockQuotes[symbol]。
+    stockQuotesList:Object.values(stockQuotes).map(q=>clonePlainData(q)),
     selectedPositionSymbol,
     currentAddMarket
   };
@@ -736,7 +739,11 @@ function applyFinanceData(data,options={}){
     }
     if(Array.isArray(data.usPositions))usPositions=data.usPositions;
     if(Array.isArray(data.realizedTrades))realizedTrades=data.realizedTrades;
-    if(data.stockQuotes&&typeof data.stockQuotes==="object")Object.assign(stockQuotes,data.stockQuotes);
+    if(Array.isArray(data.stockQuotesList)){
+      data.stockQuotesList.forEach(q=>{ if(q&&q.symbol) stockQuotes[q.symbol]=q; });
+    }else if(data.stockQuotes&&typeof data.stockQuotes==="object"){
+      Object.values(data.stockQuotes).forEach(q=>{ if(q&&q.symbol) stockQuotes[q.symbol]=q; });
+    }
     if(data.selectedPositionSymbol)selectedPositionSymbol=data.selectedPositionSymbol;
     if(data.currentAddMarket)currentAddMarket=data.currentAddMarket;
     localStorage.setItem(FINANCE_STORAGE_KEY,JSON.stringify(collectFinanceData()));
@@ -998,11 +1005,19 @@ Object.assign(window,{showAssetDetail,showAssetOverviewPage,showResearchPage,sho
     return !!row && (String(row.name||"").includes("分期") || toNumber(row.installmentTotal)>0 || toNumber(row.installmentMonths)>0 || toNumber(row.remainingInstallments)>0);
   };
   window.getInstallmentTotal = function(row){
-    const total = toNumber(row?.installmentTotal || row?.originalInstallmentTotal || row?.amount);
+    if(!row)return 0;
+    const raw = (row.installmentTotal!==undefined&&row.installmentTotal!==null&&row.installmentTotal!=="")
+      ? row.installmentTotal
+      : ((row.originalInstallmentTotal!==undefined&&row.originalInstallmentTotal!==null&&row.originalInstallmentTotal!=="") ? row.originalInstallmentTotal : row.amount);
+    const total = toNumber(raw);
     return total>0 ? total : 0;
   };
   window.getInstallmentMonths = function(row){
-    const months = Math.round(toNumber(row?.installmentMonths || row?.originalInstallmentMonths || row?.remainingInstallments));
+    if(!row)return 0;
+    const raw = (row.installmentMonths!==undefined&&row.installmentMonths!==null&&row.installmentMonths!=="")
+      ? row.installmentMonths
+      : ((row.originalInstallmentMonths!==undefined&&row.originalInstallmentMonths!==null&&row.originalInstallmentMonths!=="") ? row.originalInstallmentMonths : row.remainingInstallments);
+    const months = Math.round(toNumber(raw));
     return months>0 ? months : 0;
   };
   window.getInstallmentStartMonth = function(row){
@@ -1041,9 +1056,15 @@ Object.assign(window,{showAssetDetail,showAssetOverviewPage,showResearchPage,sho
   window.normalizeInstallmentRow = function(row){
     if(!window.isInstallmentRow(row))return false;
     const before = JSON.stringify({amount:row.amount,installmentTotal:row.installmentTotal,installmentMonths:row.installmentMonths,installmentStartMonth:row.installmentStartMonth,remainingInstallments:row.remainingInstallments,monthlyPayment:row.monthlyPayment});
-    const fallbackTotal = toNumber(row.installmentTotal || row.originalInstallmentTotal || row.amount);
+    const rawTotal = (row.installmentTotal!==undefined&&row.installmentTotal!==null&&row.installmentTotal!=="")
+      ? row.installmentTotal
+      : ((row.originalInstallmentTotal!==undefined&&row.originalInstallmentTotal!==null&&row.originalInstallmentTotal!=="") ? row.originalInstallmentTotal : row.amount);
+    const fallbackTotal = toNumber(rawTotal);
     const total = fallbackTotal>0 ? fallbackTotal : 0;
-    const months = Math.max(1, Math.round(toNumber(row.installmentMonths || row.originalInstallmentMonths || row.remainingInstallments || 12)));
+    const rawMonths = (row.installmentMonths!==undefined&&row.installmentMonths!==null&&row.installmentMonths!=="")
+      ? row.installmentMonths
+      : ((row.originalInstallmentMonths!==undefined&&row.originalInstallmentMonths!==null&&row.originalInstallmentMonths!=="") ? row.originalInstallmentMonths : (row.remainingInstallments || 12));
+    const months = Math.max(1, Math.round(toNumber(rawMonths)));
     const startMonth = normalizeMonthString(row.installmentStartMonth || row.installmentStartDate || currentMonthString());
     const elapsed = monthDiffFrom(startMonth);
     const remaining = Math.max(0, months - elapsed);
@@ -1142,8 +1163,10 @@ Object.assign(window,{showAssetDetail,showAssetOverviewPage,showResearchPage,sho
       const out={name,amount,currency:row.querySelector('[data-field="currency"]').value,note:row.querySelector('[data-field="note"]').value.trim()||"--",color:colorByType[currentAssetType]||"blue",monthlyChange:src.monthlyChange||0,children:src.children||[]};
       const totalInput=row.querySelector('[data-field="installmentTotal"]'),monthsInput=row.querySelector('[data-field="installmentMonths"]'),startInput=row.querySelector('[data-field="installmentStartMonth"]');
       if(currentAssetType==="debt"&&(name.includes("分期")||totalInput||monthsInput||src.installmentTotal)){
-        out.installmentTotal=toNumber(totalInput?.value||src.installmentTotal||amount);
-        out.installmentMonths=Math.max(1,Math.round(toNumber(monthsInput?.value||src.installmentMonths||12)));
+        const totalRaw = totalInput ? totalInput.value : ((src.installmentTotal!==undefined&&src.installmentTotal!==null&&src.installmentTotal!=="") ? src.installmentTotal : amount);
+        const monthsRaw = monthsInput ? monthsInput.value : ((src.installmentMonths!==undefined&&src.installmentMonths!==null&&src.installmentMonths!=="") ? src.installmentMonths : 12);
+        out.installmentTotal=toNumber(totalRaw);
+        out.installmentMonths=Math.max(1,Math.round(toNumber(monthsRaw)));
         out.installmentStartMonth=normalizeMonthString(startInput?.value||src.installmentStartMonth||src.installmentStartDate||currentMonthString());
         window.normalizeInstallmentRow(out);
       }
