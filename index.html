@@ -354,6 +354,57 @@ body.auth-locked .dashboard{filter:blur(10px) brightness(.45) saturate(.75);poin
 .debt-card-meta{margin-top:6px;color:var(--muted2);font-size:11px;line-height:1.5}
 @media(max-width:760px){.inline-amount-cell{width:146px}.inline-amount-input{padding:9px 10px}}
 
+
+/* v4 hotfix：金額欄位強制對齊 */
+.private-bank-table-wrap table{
+  table-layout:fixed;
+  width:100%;
+}
+.private-bank-table-wrap table th:nth-child(1),
+.private-bank-table-wrap table td:nth-child(1){width:34%;}
+.private-bank-table-wrap table th:nth-child(2),
+.private-bank-table-wrap table td:nth-child(2){width:190px;text-align:right;}
+.private-bank-table-wrap table th:nth-child(3),
+.private-bank-table-wrap table td:nth-child(3){width:130px;text-align:right;}
+.private-bank-table-wrap table th:nth-child(4),
+.private-bank-table-wrap table td:nth-child(4){width:130px;text-align:right;}
+.private-bank-table-wrap table th:nth-child(5),
+.private-bank-table-wrap table td:nth-child(5){width:auto;}
+.inline-amount-cell{
+  display:grid!important;
+  grid-template-columns:36px 132px!important;
+  align-items:center!important;
+  justify-content:end!important;
+  gap:10px!important;
+  width:178px!important;
+  margin-left:auto!important;
+}
+.inline-amount-prefix{
+  width:36px!important;
+  text-align:right!important;
+  justify-content:flex-end!important;
+  white-space:nowrap!important;
+}
+.inline-amount-input{
+  width:132px!important;
+  height:38px!important;
+  text-align:right!important;
+}
+.installment-edit-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin-top:12px;
+}
+.installment-edit-grid .field input{
+  min-height:40px;
+}
+@media(max-width:760px){
+  .private-bank-table-wrap table{min-width:760px;}
+  .inline-amount-cell{grid-template-columns:34px 118px!important;width:162px!important;}
+  .inline-amount-input{width:118px!important;}
+}
+
 </style>
 </head>
 <body class="auth-locked">
@@ -594,7 +645,18 @@ function setCloudSyncStatus(title,desc="",kind="warn"){
   el.innerHTML=`<strong>${escapeHtml(title)}</strong><span>${escapeHtml(desc)}</span>`;
 }
 function clonePlainData(data){return JSON.parse(JSON.stringify(data))}
+function migrateFinanceData(){
+  if(!assetDetails.debt||!Array.isArray(assetDetails.debt.rows))return;
+  assetDetails.debt.rows.forEach(row=>{
+    if(!row||!String(row.name||"").includes("分期"))return;
+    const currentAmount=toNumber(row.amount);
+    if(!toNumber(row.installmentTotal))row.installmentTotal=currentAmount||18000;
+    if(!toNumber(row.installmentMonths))row.installmentMonths=12;
+    row.amount=toNumber(row.installmentTotal);
+  });
+}
 function collectFinanceData(){
+  migrateFinanceData();
   return {
     version:2,
     updatedAt:new Date().toISOString(),
@@ -607,6 +669,7 @@ function collectFinanceData(){
   };
 }
 function renderAfterDataChange(){
+  migrateFinanceData();
   const card=document.querySelector(`.menu-card[data-asset-type="${currentAssetType}"]`)||document.querySelector('.menu-card[data-asset-type="cash"]');
   showAssetDetail(currentAssetType||"cash",card);
   renderUsPositions?.();
@@ -677,7 +740,7 @@ function moveCashSectionToTop(){const cashSection=document.getElementById("cashV
 function showAssetOverviewPage(type="cash"){showAssetDetail(type,document.querySelector(`.menu-card[data-asset-type="${type}"]`))}function showResearchPage(){setTopPage("research");currentAssetType="research";document.querySelectorAll(".menu-card").forEach(i=>i.classList.remove("active"));pageTitle.textContent="賣出紀錄";pageEyebrow.textContent="Realized Return Records";assetDetailCard.classList.add("hidden-section");fixedInsightsSection.classList.remove("show");debtCuteSection.classList.remove("show");document.querySelectorAll("[data-general-section]").forEach(s=>s.classList.add("hidden-section"));investmentResearchSection.classList.add("show");renderRealizedTrades()}
 function showInvestmentOverviewTab(){if(currentAssetType!=="investment")return;setInvestmentSubTab("overview");investmentResearchSection.classList.remove("show");assetDetailCard.classList.remove("hidden-section");usStockProSection.classList.add("show","overview-mode");usStockProSection.classList.remove("add-mode");assetTableWrap.classList.add("hidden-section");nestedDetailCard.classList.add("hidden-section");renderUsPositions();renderIndustryMix();renderSelectedPositionKline()}function showInvestmentAddPositionTab(){if(currentAssetType!=="investment")return;setInvestmentSubTab("add");investmentResearchSection.classList.remove("show");assetDetailCard.classList.remove("hidden-section");usStockProSection.classList.add("show","add-mode");usStockProSection.classList.remove("overview-mode");assetTableWrap.classList.add("hidden-section");nestedDetailCard.classList.add("hidden-section");if(!quoteResult.classList.contains("show")){selectedQuote=stockQuotes.TSLA;stockSearchInput.value="";quoteSymbol.textContent="TSLA";quoteName.textContent="Tesla, Inc.";quotePrice.textContent=formatUsd(410.65);quoteChange.textContent="+2.4%";quoteChange.className="quote-name right green";quoteRange.textContent="US$ 138 - US$ 488";quoteZone.textContent="中高檔";quoteEarnings.textContent="2026/07/22（預估）";buyCostInput.value=410.65;quoteResult.classList.add("show");drawUsStockKline(selectedQuote)}}function showInvestmentAnalysisTab(){currentAssetType="investment";setTopPage("asset");setInvestmentSubTab("analysis");pageTitle.textContent="賣出紀錄";pageEyebrow.textContent="Realized Return Records";document.querySelectorAll(".menu-card").forEach(i=>i.classList.remove("active"));document.querySelector('.menu-card[data-asset-type="investment"]')?.classList.add("active");assetDetailCard.classList.remove("hidden-section");investmentTabs.classList.add("show");usStockProSection.classList.remove("show","overview-mode","add-mode");assetTableWrap.classList.add("hidden-section");nestedDetailCard.classList.add("hidden-section");fixedInsightsSection.classList.remove("show");debtCuteSection.classList.remove("show");document.querySelectorAll("[data-general-section]").forEach(s=>s.classList.add("hidden-section"));investmentResearchSection.classList.add("show");renderRealizedTrades()}
 function showNestedDetail(type,i){const r=assetDetails[type]?.rows?.[i];if(!r)return;currentNestedType=type;currentNestedIndex=i;if(!Array.isArray(r.children))r.children=[];nestedDetailTitle.textContent=`${r.name}明細`;nestedDetailDesc.textContent=r.note||"此分類細項明細。";nestedDetailRows.innerHTML=r.children.length?r.children.map(x=>`<div class="nested-item-card"><div><div class="nested-item-name">${escapeHtml(x.name)}</div><div class="nested-item-note">${escapeHtml(x.note||"--")}</div></div><div class="nested-item-amount">${formatTwd(x.amount)}</div></div>`).join(""):`<div class="empty-detail">目前還沒有細項。</div>`;nestedDetailCard.classList.add("show")}function hideNestedDetail(){nestedDetailCard.classList.remove("show");currentNestedType=null;currentNestedIndex=null}
-function openModal(id){document.getElementById(id)?.classList.add("show")}function closeModal(id){document.getElementById(id)?.classList.remove("show")}function openAddRecordModal(){recordNameInput.value="";recordAmountInput.value="";recordNoteInput.value="";openModal("recordModal")}function saveNewRecord(){const name=recordNameInput.value.trim();if(!name){alert("請輸入項目名稱");return}const amount=toNumber(recordAmountInput.value),newRow={name,amount,currency:recordCurrencySelect.value,note:recordNoteInput.value.trim()||"--",color:colorByType[currentAssetType]||"blue",monthlyChange:0,children:[]};if(currentAssetType==="debt"&&name.includes("分期")){newRow.installmentTotal=amount;newRow.installmentMonths=12}assetDetails[currentAssetType].rows.push(newRow);closeModal("recordModal");showAssetDetail(currentAssetType,document.querySelector(`.menu-card[data-asset-type="${currentAssetType}"]`));saveFinanceData()}function openEditModal(){const d=assetDetails[currentAssetType];if(!d)return;editModal.dataset.mode="";editRows.innerHTML=d.rows.map((r,i)=>`<div class="edit-row" data-index="${i}"><button class="drag-handle" type="button" title="按住拖移排序" aria-label="按住拖移排序">☰</button><label class="field">項目<input data-field="name" value="${escapeHtml(r.name)}"></label><label class="field">金額<input data-field="amount" type="number" value="${toNumber(r.amount)}"></label><label class="field">幣種<select data-field="currency"><option value="TWD" ${r.currency==="TWD"?"selected":""}>TWD</option><option value="USD" ${r.currency==="USD"?"selected":""}>USD</option></select></label><label class="field">備註<input data-field="note" value="${escapeHtml(r.note||"")}"></label><button class="danger-btn" onclick="removeEditRow(${i})">×</button></div>`).join("");enableEditRowDrag();openModal("editModal")}function removeEditRow(i){assetDetails[currentAssetType].rows.splice(i,1);openEditModal();showAssetDetail(currentAssetType,document.querySelector(`.menu-card[data-asset-type="${currentAssetType}"]`));saveFinanceData()}function saveEditRows(){if(editModal.dataset.mode==="children"){const savedType=currentNestedType,savedIndex=currentNestedIndex,parent=assetDetails[savedType]?.rows?.[savedIndex];if(parent){parent.children=Array.from(document.querySelectorAll("#editRows .edit-row")).map(row=>({name:row.querySelector('[data-field="name"]').value.trim()||"未命名",amount:toNumber(row.querySelector('[data-field="amount"]').value),note:row.querySelector('[data-field="note"]').value.trim()||"--"}));syncParentAmountFromChildren(savedType,savedIndex)}editModal.dataset.mode="";closeModal("editModal");showAssetDetail(savedType,document.querySelector(`.menu-card[data-asset-type="${savedType}"]`));currentNestedType=savedType;currentNestedIndex=savedIndex;if(savedType==="fixed")showFixedInlineDetail(savedIndex);else showNestedDetail(savedType,savedIndex);saveFinanceData();return}assetDetails[currentAssetType].rows=Array.from(document.querySelectorAll("#editRows .edit-row")).map(row=>{const src=assetDetails[currentAssetType].rows[Number(row.dataset.index)]||{};return{name:row.querySelector('[data-field="name"]').value.trim()||"未命名",amount:toNumber(row.querySelector('[data-field="amount"]').value),currency:row.querySelector('[data-field="currency"]').value,note:row.querySelector('[data-field="note"]').value.trim()||"--",color:colorByType[currentAssetType]||"blue",monthlyChange:src.monthlyChange||0,children:src.children||[],installmentTotal:src.installmentTotal,installmentMonths:src.installmentMonths}});editModal.dataset.mode="";closeModal("editModal");showAssetDetail(currentAssetType,document.querySelector(`.menu-card[data-asset-type="${currentAssetType}"]`));saveFinanceData()}
+function openModal(id){document.getElementById(id)?.classList.add("show")}function closeModal(id){document.getElementById(id)?.classList.remove("show")}function openAddRecordModal(){recordNameInput.value="";recordAmountInput.value="";recordNoteInput.value="";openModal("recordModal")}function saveNewRecord(){const name=recordNameInput.value.trim();if(!name){alert("請輸入項目名稱");return}const amount=toNumber(recordAmountInput.value),newRow={name,amount,currency:recordCurrencySelect.value,note:recordNoteInput.value.trim()||"--",color:colorByType[currentAssetType]||"blue",monthlyChange:0,children:[]};if(currentAssetType==="debt"&&name.includes("分期")){newRow.installmentTotal=amount;newRow.installmentMonths=12}assetDetails[currentAssetType].rows.push(newRow);closeModal("recordModal");showAssetDetail(currentAssetType,document.querySelector(`.menu-card[data-asset-type="${currentAssetType}"]`));saveFinanceData()}function openEditModal(){const d=assetDetails[currentAssetType];if(!d)return;editModal.dataset.mode="";editRows.innerHTML=d.rows.map((r,i)=>{const isInstallment=currentAssetType==="debt"&&String(r.name||"").includes("分期"),extra=isInstallment?`<div class="installment-edit-grid" style="grid-column:2 / -1"><label class="field">分期總金額<input data-field="installmentTotal" type="number" value="${toNumber(r.installmentTotal||r.amount)}"></label><label class="field">分期期數<input data-field="installmentMonths" type="number" min="1" step="1" value="${toNumber(r.installmentMonths)||12}"></label></div>`:"";return`<div class="edit-row" data-index="${i}"><button class="drag-handle" type="button" title="按住拖移排序" aria-label="按住拖移排序">☰</button><label class="field">項目<input data-field="name" value="${escapeHtml(r.name)}"></label><label class="field">金額<input data-field="amount" type="number" value="${toNumber(r.amount)}"></label><label class="field">幣種<select data-field="currency"><option value="TWD" ${r.currency==="TWD"?"selected":""}>TWD</option><option value="USD" ${r.currency==="USD"?"selected":""}>USD</option></select></label><label class="field">備註<input data-field="note" value="${escapeHtml(r.note||"")}"></label><button class="danger-btn" onclick="removeEditRow(${i})">×</button>${extra}</div>`}).join("");enableEditRowDrag();openModal("editModal")}function removeEditRow(i){assetDetails[currentAssetType].rows.splice(i,1);openEditModal();showAssetDetail(currentAssetType,document.querySelector(`.menu-card[data-asset-type="${currentAssetType}"]`));saveFinanceData()}function saveEditRows(){if(editModal.dataset.mode==="children"){const savedType=currentNestedType,savedIndex=currentNestedIndex,parent=assetDetails[savedType]?.rows?.[savedIndex];if(parent){parent.children=Array.from(document.querySelectorAll("#editRows .edit-row")).map(row=>({name:row.querySelector('[data-field="name"]').value.trim()||"未命名",amount:toNumber(row.querySelector('[data-field="amount"]').value),note:row.querySelector('[data-field="note"]').value.trim()||"--"}));syncParentAmountFromChildren(savedType,savedIndex)}editModal.dataset.mode="";closeModal("editModal");showAssetDetail(savedType,document.querySelector(`.menu-card[data-asset-type="${savedType}"]`));currentNestedType=savedType;currentNestedIndex=savedIndex;if(savedType==="fixed")showFixedInlineDetail(savedIndex);else showNestedDetail(savedType,savedIndex);saveFinanceData();return}assetDetails[currentAssetType].rows=Array.from(document.querySelectorAll("#editRows .edit-row")).map(row=>{const src=assetDetails[currentAssetType].rows[Number(row.dataset.index)]||{};const name=row.querySelector('[data-field="name"]').value.trim()||"未命名";const amount=toNumber(row.querySelector('[data-field="amount"]').value);const out={name,amount,currency:row.querySelector('[data-field="currency"]').value,note:row.querySelector('[data-field="note"]').value.trim()||"--",color:colorByType[currentAssetType]||"blue",monthlyChange:src.monthlyChange||0,children:src.children||[]};const totalInput=row.querySelector('[data-field="installmentTotal"]'),monthsInput=row.querySelector('[data-field="installmentMonths"]');if(currentAssetType==="debt"&&(name.includes("分期")||totalInput||monthsInput)){out.installmentTotal=toNumber(totalInput?.value||src.installmentTotal||amount);out.installmentMonths=toNumber(monthsInput?.value||src.installmentMonths||12);out.amount=out.installmentTotal}return out});editModal.dataset.mode="";closeModal("editModal");showAssetDetail(currentAssetType,document.querySelector(`.menu-card[data-asset-type="${currentAssetType}"]`));saveFinanceData()}
 function enableEditRowDrag(){
   const list=document.getElementById("editRows");
   if(!list)return;
