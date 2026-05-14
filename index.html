@@ -453,11 +453,6 @@ body.auth-locked .dashboard{filter:blur(10px) brightness(.45) saturate(.75);poin
   .inline-amount-input{width:118px!important;}
   .installment-edit-grid{grid-template-columns:1fr!important;}
 }
-
-/* v6 currency prefix width */
-.inline-amount-cell{grid-template-columns:44px 132px!important;width:188px!important}
-.inline-amount-prefix{width:44px!important}
-@media(max-width:760px){.inline-amount-cell{grid-template-columns:40px 118px!important;width:168px!important}.inline-amount-prefix{width:40px!important}}
 </style>
 </head>
 <body class="auth-locked">
@@ -1182,170 +1177,6 @@ Object.assign(window,{showAssetDetail,showAssetOverviewPage,showResearchPage,sho
 
   window.normalizeAllInstallments(false);
 })();
-
-/* v6：幣種以編輯欄位為主；USD 依台銀匯率換算台幣總資產 */
-(function(){
-  const FALLBACK_USD_TWD = 32.5;
-  const BOT_CSV_URL = "https://rate.bot.com.tw/xrt/flcsv/0/day";
-  window.financeFxRates = window.financeFxRates || {
-    TWD: 1,
-    USD: Number(localStorage.getItem("financeUsdTwdRate") || FALLBACK_USD_TWD),
-    JPY: Number(localStorage.getItem("financeJpyTwdRate") || 0.22)
-  };
-  window.financeFxSource = window.financeFxSource || "備援匯率";
-
-  function normalizeCurrency(c){
-    const s=String(c||"TWD").trim().toUpperCase();
-    return s || "TWD";
-  }
-  function currencyPrefix(c){
-    c=normalizeCurrency(c);
-    if(c==="USD")return "US$";
-    if(c==="JPY")return "¥";
-    return "NT$";
-  }
-  function formatMoneyByCurrency(value,c){
-    c=normalizeCurrency(c);
-    const n=toNumber(value);
-    if(c==="USD")return `US$ ${new Intl.NumberFormat("zh-TW",{maximumFractionDigits:2}).format(n)}`;
-    if(c==="JPY")return `¥ ${new Intl.NumberFormat("zh-TW",{maximumFractionDigits:0}).format(n)}`;
-    return formatTwd(n);
-  }
-  function fxRateToTwd(c){
-    c=normalizeCurrency(c);
-    if(c==="TWD")return 1;
-    const n=Number(window.financeFxRates?.[c]);
-    return Number.isFinite(n)&&n>0?n:1;
-  }
-  function rowAmountTwd(row){
-    if(!row)return 0;
-    return toNumber(row.amount) * fxRateToTwd(row.currency);
-  }
-  function rowValuationTwd(row,type){
-    if(type==="fixed")return Math.round(rowAmountTwd(row)*0.5);
-    return rowAmountTwd(row);
-  }
-  function rateNote(){
-    const usd=Number(window.financeFxRates?.USD||FALLBACK_USD_TWD);
-    return `USD 換算：${window.financeFxSource}，1 USD ≈ NT$ ${usd.toFixed(3)}`;
-  }
-  function parseBotCsv(csv){
-    const lines=String(csv||"").split(/\r?\n/).filter(Boolean);
-    const findRow=(code)=>lines.find(line=>line.includes(`(${code})`) || line.split(',')[0]?.includes(code));
-    const parseRow=(line)=>{
-      if(!line)return 0;
-      const cols=line.split(',').map(x=>x.replace(/^"|"$/g,"").trim());
-      // 台銀 CSV：欄位通常為 現金買入、現金賣出、即期買入、即期賣出；資產換算採即期買入，抓不到再退回現金買入。
-      return toNumber(cols[3]) || toNumber(cols[1]) || 0;
-    };
-    return {USD:parseRow(findRow("USD")), JPY:parseRow(findRow("JPY"))};
-  }
-  async function fetchTextWithFallback(url){
-    try{
-      const res=await fetch(url,{cache:"no-store"});
-      if(res.ok)return await res.text();
-    }catch(e){}
-    try{
-      const proxy="https://api.allorigins.win/raw?url="+encodeURIComponent(url);
-      const res=await fetch(proxy,{cache:"no-store"});
-      if(res.ok)return await res.text();
-    }catch(e){}
-    return "";
-  }
-  async function refreshBankOfTaiwanRates(){
-    const csv=await fetchTextWithFallback(BOT_CSV_URL);
-    const parsed=parseBotCsv(csv);
-    let changed=false;
-    if(parsed.USD>0){window.financeFxRates.USD=parsed.USD;localStorage.setItem("financeUsdTwdRate",String(parsed.USD));changed=true;}
-    if(parsed.JPY>0){window.financeFxRates.JPY=parsed.JPY;localStorage.setItem("financeJpyTwdRate",String(parsed.JPY));changed=true;}
-    window.financeFxSource=changed?"台銀即期買入":"備援匯率";
-    if(changed && typeof renderAfterDataChange==="function")renderAfterDataChange();
-    return changed;
-  }
-
-  // 覆蓋計算邏輯：表單金額保留原幣別；所有總資產、占比、流動性用台幣換算值。
-  window.fixedValuationAmount = fixedValuationAmount = function(row){return Math.round(rowAmountTwd(row)*0.5)};
-  window.categoryTotal = categoryTotal = function(t){
-    const rows=assetDetails?.[t]?.rows||[];
-    return rows.reduce((s,r)=>s+rowValuationTwd(r,t),0);
-  };
-  window.totalAssets = totalAssets = function(){return categoryTotal("cash")+categoryTotal("fixed")+categoryTotal("investment")};
-  window.netWorth = netWorth = function(){return totalAssets()-categoryTotal("debt")};
-
-  window.updateInlineAssetAmount = updateInlineAssetAmount = function(type,index,value){
-    const row=assetDetails?.[type]?.rows?.[index];
-    if(!row)return;
-    const next=Math.max(0,toNumber(value));
-    row.amount=next; // 這裡是「原幣別金額」，例如 USD 13 就存 13，不會當成 NT$ 13。
-    row.currency = normalizeCurrency(row.currency);
-    if(type==="debt" && typeof window.isInstallmentRow==="function" && window.isInstallmentRow(row)){
-      row.installmentTotal = next;
-      row.installmentStartMonth = row.installmentStartMonth || (typeof currentMonthString==="function"?currentMonthString():new Date().toISOString().slice(0,7));
-      window.normalizeInstallmentRow?.(row);
-    }
-    showAssetDetail(type,document.querySelector(`.menu-card[data-asset-type="${type}"]`));
-    if(typeof window.scheduleFinanceSave==="function")window.scheduleFinanceSave();else saveFinanceData();
-  };
-
-  window.showAssetDetail = showAssetDetail = function(type,card){
-    const d=assetDetails[type];if(!d)return;currentAssetType=type;setTopPage("asset");updateInvestmentTabsVisibility(type);investmentResearchSection.classList.remove("show");assetDetailCard.classList.remove("hidden-section");
-    const titles={cash:"個人財務總覽",fixed:"固定資產",investment:"投資",debt:"負債"};
-    const brows={cash:"Desktop Financial Command Center",fixed:"Fixed Assets Overview",investment:"Investment Overview",debt:"Liabilities Overview"};
-    pageTitle.textContent=titles[type]||"個人財務總覽";pageEyebrow.textContent=brows[type]||"Desktop Financial Command Center";
-    document.querySelectorAll(".menu-card").forEach(i=>i.classList.remove("active"));if(card)card.classList.add("active");
-    assetDetailTitle.textContent=d.title;assetDetailDesc.textContent=d.desc;assetDetailTag.textContent=d.tag;hideNestedDetail();updateCategorySections(type);
-    const total=categoryTotal(type);
-    assetDetailRows.innerHTML=d.rows.map((r,i)=>{
-      r.currency=normalizeCurrency(r.currency);
-      const twd=rowValuationTwd(r,type),ratio=total?twd/total*100:0,ch=toNumber(r.monthlyChange),prefix=currencyPrefix(r.currency);
-      return`<tr><td><button class="detail-link" onclick="showNestedDetail('${type}',${i})">${escapeHtml(r.name)}</button><br><span class="muted">${escapeHtml(r.currency)}${r.currency!=="TWD"?`・約 ${formatTwd(twd)}`:""}</span></td><td class="right"><div class="inline-amount-cell"><span class="inline-amount-prefix">${prefix}</span><input class="inline-amount-input" type="number" min="0" step="1" value="${toNumber(r.amount)}" title="直接修改${r.currency}金額" onfocus="this.select()" onkeydown="if(event.key==='Enter')this.blur()" onchange="updateInlineAssetAmount('${type}',${i},this.value)"></div></td><td class="right ${monthlyChangeClass(ch)}">${ch>=0?"+":""}${formatPercent(ch)}</td><td class="right ${r.color}">${formatPercent(ratio)}</td><td class="muted">${escapeHtml(r.note||"--")}</td></tr>`;
-    }).join("");
-    updateDashboardNumbers();if(type==="investment")requestAnimationFrame(()=>showInvestmentOverviewTab());
-  };
-
-  window.renderCashPrivateBanking = renderCashPrivateBanking = function(){
-    const rows=assetDetails.cash.rows,total=categoryTotal("cash"),assetTotal=totalAssets();const tbody=document.getElementById("cashPrivateRows");if(!tbody)return;
-    tbody.innerHTML=rows.map((r,i)=>{
-      r.currency=normalizeCurrency(r.currency);
-      const raw=toNumber(r.amount),twd=rowAmountTwd(r),pct=total?twd/total*100:0,ch=toNumber(r.monthlyChange),prefix=currencyPrefix(r.currency);
-      return`<tr><td><strong>${escapeHtml(r.name)}</strong><br><span class="muted">${escapeHtml(r.currency)}${r.currency!=="TWD"?`・約 ${formatTwd(twd)}`:""}</span></td><td class="right"><div class="inline-amount-cell"><span class="inline-amount-prefix">${prefix}</span><input class="inline-amount-input" type="number" min="0" step="1" value="${raw}" title="直接修改${r.currency}金額" onfocus="this.select()" onkeydown="if(event.key==='Enter')this.blur()" onchange="updateInlineAssetAmount('cash',${i},this.value)"></div></td><td class="right ${monthlyChangeClass(ch)}">${ch>=0?"+":""}${formatPercent(ch)}</td><td class="right yellow">${formatPercent(pct)}</td><td class="muted">${escapeHtml(r.note||"--")}</td></tr>`;
-    }).join("");
-    const largest=[...rows].sort((a,b)=>rowAmountTwd(b)-rowAmountTwd(a))[0];
-    const totalNode=document.getElementById("cashPrivateTotal"),largestNode=document.getElementById("cashPrivateLargest"),ratioNode=document.getElementById("cashPrivateRatio"),liquidityNode=document.getElementById("cashPrivateLiquidity"),liquidityNoteNode=document.getElementById("cashPrivateLiquidityNote");
-    const liquidity=getStudentLiquidityStatus(total);
-    if(totalNode)totalNode.textContent=formatTwd(total);
-    if(largestNode)largestNode.textContent=largest?.name||"--";
-    if(ratioNode)ratioNode.textContent=formatPercent(assetTotal?total/assetTotal*100:0);
-    if(liquidityNode){liquidityNode.textContent=liquidity.label;liquidityNode.className=liquidity.cls;}
-    if(liquidityNoteNode)liquidityNoteNode.textContent=`學生模式：以每月 ${formatTwd(STUDENT_MONTHLY_BASIC_EXPENSE)} 計，約 ${liquidity.months.toFixed(1)} 個月生活費｜${rateNote()}`;
-  };
-
-  window.renderCashVaultCards = renderCashVaultCards = function(){
-    const rows=assetDetails.cash.rows,total=categoryTotal("cash"),assetTotal=totalAssets(),icons=["🏦","💵","🟢","💰"];const grid=document.getElementById("cashCardGrid");if(!grid)return;
-    grid.innerHTML=rows.map((r,i)=>{const twd=rowAmountTwd(r),pct=total?twd/total*100:0,ch=toNumber(r.monthlyChange);return`<div class="cash-card ${i===0?"primary":""}"><div class="cash-card-top"><div><div class="cash-label">${escapeHtml(r.name)}</div><div class="cash-value">${formatMoneyByCurrency(r.amount,r.currency)}</div></div><div class="cash-icon">${icons[i]||"💰"}</div></div><div class="cash-note">${escapeHtml(r.note||"--")}・${normalizeCurrency(r.currency)!=="TWD"?`約 ${formatTwd(twd)}・`:""}本月變化 <span class="${monthlyChangeClass(ch)}">${ch>=0?"+":""}${formatPercent(ch)}</span>・${formatPercent(pct)}</div><div class="cash-progress"><div class="cash-progress-fill" style="width:${pct.toFixed(1)}%"></div></div></div>`}).join("");
-    const largest=[...rows].sort((a,b)=>rowAmountTwd(b)-rowAmountTwd(a))[0];
-    const totalNode=document.getElementById("cashTotalMini"),largestNode=document.getElementById("cashLargestMini"),ratioNode=document.getElementById("cashRatioMini");
-    if(totalNode)totalNode.textContent=formatTwd(total);if(largestNode)largestNode.textContent=largest?.name||"--";if(ratioNode)ratioNode.textContent=formatPercent(assetTotal?total/assetTotal*100:0);
-  };
-
-  window.showNestedDetail = showNestedDetail = (function(original){
-    return function(type,i){
-      original?.(type,i);
-      const r=assetDetails?.[type]?.rows?.[i];
-      if(!r)return;
-      const title=document.querySelector("#nestedDetailTitle");
-      const desc=document.querySelector("#nestedDetailDesc");
-      if(desc && normalizeCurrency(r.currency)!=="TWD")desc.textContent=`${r.note||"此分類細項"}｜${formatMoneyByCurrency(r.amount,r.currency)} ≈ ${formatTwd(rowAmountTwd(r))}`;
-    };
-  })(typeof showNestedDetail==="function"?showNestedDetail:null);
-
-  // 讓頁面載入後先用快取匯率，再嘗試抓台銀最新匯率；抓到後自動重算。
-  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>{renderAfterDataChange?.();refreshBankOfTaiwanRates();},{once:true});
-  else {try{renderAfterDataChange?.();}catch(e){} refreshBankOfTaiwanRates();}
-
-  Object.assign(window,{refreshBankOfTaiwanRates,formatMoneyByCurrency,rowAmountTwd,fxRateToTwd,currencyPrefix});
-})();
-
 </script>
 
 <script type="module">
@@ -1513,6 +1344,24 @@ Object.assign(window,{showAssetDetail,showAssetOverviewPage,showResearchPage,sho
       setStatus("讀取失敗", error.message || "請檢查 Realtime Database Rules", "err");
     }
   });
+</script>
+<script>
+(() => {
+  const hiddenLine = "USD 換算：備援匯率，1 USD ≈ NT$ 32.500";
+  const removeHiddenLine = () => {
+    document.querySelectorAll("body *").forEach((el) => {
+      if (el.childElementCount === 0 && el.textContent.trim() === hiddenLine) {
+        el.remove();
+      }
+    });
+  };
+  removeHiddenLine();
+  new MutationObserver(removeHiddenLine).observe(document.body, {
+    childList: true,
+    subtree: true,
+    characterData: true
+  });
+})();
 </script>
 </body>
 </html>
