@@ -405,6 +405,54 @@ body.auth-locked .dashboard{filter:blur(10px) brightness(.45) saturate(.75);poin
   .inline-amount-input{width:118px!important;}
 }
 
+
+
+/* v5 performance + centered amount fields */
+.private-bank-table-wrap table th:nth-child(2),
+.private-bank-table-wrap table td:nth-child(2),
+.asset-table-wrap table th:nth-child(2),
+.asset-table-wrap table td:nth-child(2){
+  text-align:center!important;
+}
+.inline-amount-cell{
+  display:grid!important;
+  grid-template-columns:34px 132px!important;
+  align-items:center!important;
+  justify-content:center!important;
+  justify-items:center!important;
+  gap:8px!important;
+  width:178px!important;
+  margin-left:auto!important;
+  margin-right:auto!important;
+}
+.inline-amount-prefix{
+  width:34px!important;
+  justify-content:center!important;
+  text-align:center!important;
+}
+.inline-amount-input{
+  width:132px!important;
+  height:38px!important;
+  text-align:center!important;
+}
+.installment-countdown-line{
+  margin-top:6px;
+  color:var(--yellow);
+  font-size:12px;
+  font-weight:800;
+  line-height:1.55;
+}
+.installment-edit-grid{
+  display:grid!important;
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  gap:10px!important;
+  margin-top:12px!important;
+}
+@media(max-width:760px){
+  .inline-amount-cell{grid-template-columns:32px 118px!important;width:158px!important;}
+  .inline-amount-input{width:118px!important;}
+  .installment-edit-grid{grid-template-columns:1fr!important;}
+}
 </style>
 </head>
 <body class="auth-locked">
@@ -913,6 +961,194 @@ function runSmokeTests(){console.assert(typeof renderRealizedTrades==="function"
 function initApp(){loadLocalFinanceData();initAssetCards();initAvatarUpload();initActionButtons();initCharts();runSmokeTests()}
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",initApp);else initApp();
 Object.assign(window,{showAssetDetail,showAssetOverviewPage,showResearchPage,showResearchSymbol,openAddRecordModal,openEditModal,closeModal,saveNewRecord,removeEditRow,saveEditRows,showNestedDetail,hideNestedDetail,openAddChildModal,saveChildRecord,openEditChildModal,openAddFixedInlineItem,openEditFixedInlineItems,removeChildEditRow,configureMarketApiKey,searchStockQuote,addUsStockPosition,showInvestmentOverviewTab,showInvestmentAddPositionTab,showInvestmentAnalysisTab,openSellModal,saveSellRecord,deleteRealizedTrade,setAddMarket,showFixedInlineDetail,hideFixedInlineDetail,saveFinanceData,updateInlineAssetAmount,applyFinanceData,collectFinanceData,overwriteCloudWithCurrentData});
+
+
+/* v5：效能優化、金額置中、分期倒數 */
+(function(){
+  const SAVE_DEBOUNCE_MS = 850;
+  let optimizedSaveTimer = null;
+  let lastDebtChartKey = "";
+
+  function currentMonthString(d=new Date()){
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+  }
+  function normalizeMonthString(v){
+    if(!v)return currentMonthString();
+    const s=String(v);
+    if(/^\d{4}-\d{2}$/.test(s))return s;
+    if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,7);
+    const d=new Date(s);
+    if(Number.isNaN(d.getTime()))return currentMonthString();
+    return currentMonthString(d);
+  }
+  function monthDiffFrom(startMonth, endMonth=currentMonthString()){
+    const [sy,sm]=normalizeMonthString(startMonth).split("-").map(Number);
+    const [ey,em]=normalizeMonthString(endMonth).split("-").map(Number);
+    return Math.max(0,(ey-sy)*12+(em-sm));
+  }
+
+  window.scheduleFinanceSave = function(){
+    clearTimeout(optimizedSaveTimer);
+    optimizedSaveTimer = setTimeout(()=>{
+      if(typeof saveFinanceData === "function") saveFinanceData();
+    }, SAVE_DEBOUNCE_MS);
+  };
+
+  window.isInstallmentRow = function(row){
+    return !!row && (String(row.name||"").includes("分期") || toNumber(row.installmentTotal)>0 || toNumber(row.installmentMonths)>0 || toNumber(row.remainingInstallments)>0);
+  };
+  window.getInstallmentTotal = function(row){
+    const total = toNumber(row?.installmentTotal || row?.originalInstallmentTotal || row?.amount);
+    return total>0 ? total : 0;
+  };
+  window.getInstallmentMonths = function(row){
+    const months = Math.round(toNumber(row?.installmentMonths || row?.originalInstallmentMonths || row?.remainingInstallments));
+    return months>0 ? months : 0;
+  };
+  window.getInstallmentStartMonth = function(row){
+    return normalizeMonthString(row?.installmentStartMonth || row?.installmentStartDate || currentMonthString());
+  };
+  window.getInstallmentRemainingMonths = function(row){
+    if(!window.isInstallmentRow(row))return 0;
+    const totalMonths = window.getInstallmentMonths(row) || 12;
+    const elapsed = monthDiffFrom(window.getInstallmentStartMonth(row));
+    return Math.max(0,totalMonths-elapsed);
+  };
+  window.getDebtCardDisplayAmount = function(row){
+    if(window.isInstallmentRow(row)){
+      const total=window.getInstallmentTotal(row), months=window.getInstallmentMonths(row)||1;
+      return Math.round(total/months);
+    }
+    return toNumber(row?.amount);
+  };
+  window.getDebtCardNote = function(row){
+    if(window.isInstallmentRow(row)){
+      const total=window.getInstallmentTotal(row);
+      const months=window.getInstallmentMonths(row)||1;
+      const remain=window.getInstallmentRemainingMonths(row);
+      const monthly=window.getDebtCardDisplayAmount(row);
+      const remainingBalance=Math.max(0,monthly*remain);
+      return `${escapeHtml(row.note||"設備或消費分期")}・總額 ${formatTwd(total)} ／ ${months} 期・每月約 ${formatTwd(monthly)}<div class="installment-countdown-line">剩餘 ${remain} 期・未繳約 ${formatTwd(remainingBalance)}・開始 ${window.getInstallmentStartMonth(row)}</div>`;
+    }
+    return escapeHtml(row?.note||"--");
+  };
+
+  window.normalizeInstallmentRow = function(row){
+    if(!window.isInstallmentRow(row))return false;
+    const before = JSON.stringify({amount:row.amount,installmentTotal:row.installmentTotal,installmentMonths:row.installmentMonths,installmentStartMonth:row.installmentStartMonth,remainingInstallments:row.remainingInstallments,monthlyPayment:row.monthlyPayment});
+    const fallbackTotal = toNumber(row.installmentTotal || row.originalInstallmentTotal || row.amount);
+    const total = fallbackTotal>0 ? fallbackTotal : 0;
+    const months = Math.max(1, Math.round(toNumber(row.installmentMonths || row.originalInstallmentMonths || row.remainingInstallments || 12)));
+    const startMonth = normalizeMonthString(row.installmentStartMonth || row.installmentStartDate || currentMonthString());
+    const elapsed = monthDiffFrom(startMonth);
+    const remaining = Math.max(0, months - elapsed);
+    const monthly = Math.round(total / months);
+    row.installmentTotal = total;
+    row.installmentMonths = months;
+    row.installmentStartMonth = startMonth;
+    row.remainingInstallments = remaining;
+    row.monthlyPayment = monthly;
+    row.amount = Math.max(0, monthly * remaining);
+    row.currency = row.currency || "TWD";
+    row.color = row.color || "red";
+    row.note = row.note || "設備或消費分期";
+    return before !== JSON.stringify({amount:row.amount,installmentTotal:row.installmentTotal,installmentMonths:row.installmentMonths,installmentStartMonth:row.installmentStartMonth,remainingInstallments:row.remainingInstallments,monthlyPayment:row.monthlyPayment});
+  };
+
+  window.normalizeAllInstallments = function(shouldSave=false){
+    let changed=false;
+    (assetDetails?.debt?.rows||[]).forEach(row=>{ if(window.normalizeInstallmentRow(row)) changed=true; });
+    if(changed && shouldSave) window.scheduleFinanceSave();
+    return changed;
+  };
+
+  const originalSaveFinanceData = typeof saveFinanceData === "function" ? saveFinanceData : null;
+  if(originalSaveFinanceData){
+    window.saveFinanceData = saveFinanceData = function(){
+      window.normalizeAllInstallments(false);
+      return originalSaveFinanceData();
+    };
+  }
+
+  const originalApplyFinanceData = typeof applyFinanceData === "function" ? applyFinanceData : null;
+  if(originalApplyFinanceData){
+    window.applyFinanceData = applyFinanceData = function(data,options={}){
+      const ok = originalApplyFinanceData(data,options);
+      window.normalizeAllInstallments(false);
+      if(typeof renderAfterDataChange === "function") renderAfterDataChange();
+      return ok;
+    };
+  }
+
+  window.updateInlineAssetAmount = updateInlineAssetAmount = function(type,index,value){
+    const row=assetDetails?.[type]?.rows?.[index];
+    if(!row)return;
+    const next=Math.max(0,toNumber(value));
+    row.amount=next;
+    if(type==="debt" && window.isInstallmentRow(row)){
+      row.installmentTotal = next;
+      row.installmentStartMonth = row.installmentStartMonth || currentMonthString();
+      window.normalizeInstallmentRow(row);
+    }
+    showAssetDetail(type,document.querySelector(`.menu-card[data-asset-type="${type}"]`));
+    window.scheduleFinanceSave();
+  };
+
+  const originalRenderDebtCharts = typeof renderDebtCharts === "function" ? renderDebtCharts : null;
+  if(originalRenderDebtCharts){
+    window.renderDebtCharts = renderDebtCharts = function(rows){
+      const key = JSON.stringify((rows||[]).map(r=>[r.name,toNumber(r.amount),toNumber(r.monthlyChange),toNumber(r.remainingInstallments),toNumber(r.monthlyPayment)]));
+      if(key === lastDebtChartKey) return;
+      lastDebtChartKey = key;
+      return originalRenderDebtCharts(rows);
+    };
+  }
+
+  window.renderDebtCuteCards = renderDebtCuteCards = function(){
+    window.normalizeAllInstallments(false);
+    const rows=assetDetails.debt.rows,total=categoryTotal("debt"),em=["💳","🧾","🪙","📌"];
+    debtCuteGrid.innerHTML=rows.map((r,i)=>{
+      const amount=toNumber(r.amount),displayAmount=window.getDebtCardDisplayAmount(r),pct=total?amount/total*100:0,ch=toNumber(r.monthlyChange),detailNote=window.getDebtCardNote(r),meta=window.isInstallmentRow(r)?`<div class="debt-card-meta">分期倒數：每跨一個月份自動少 1 期</div>`:"";
+      return`<div class="debt-cute-card"><div class="debt-card-top"><div><div class="debt-card-title">${escapeHtml(r.name)}</div><div class="debt-card-value">${formatTwd(displayAmount)}</div>${meta}</div><div class="debt-emoji">${em[i]||"💰"}</div></div><div class="debt-card-note">${detailNote}・本月變化 <span class="${monthlyChangeClass(ch)}">${ch>=0?"+":""}${formatPercent(ch)}</span></div><div class="debt-progress"><div class="debt-progress-fill" style="width:${pct.toFixed(1)}%"></div></div></div>`;
+    }).join("");
+    if(typeof renderDebtCharts === "function") renderDebtCharts(rows);
+  };
+
+  window.openEditModal = openEditModal = function(){
+    const d=assetDetails[currentAssetType];if(!d)return;editModal.dataset.mode="";
+    editRows.innerHTML=d.rows.map((r,i)=>{
+      const isInstallment=currentAssetType==="debt"&&window.isInstallmentRow(r);
+      const extra=isInstallment?`<div class="installment-edit-grid" style="grid-column:2 / -1"><label class="field">分期總金額<input data-field="installmentTotal" type="number" value="${window.getInstallmentTotal(r)}"></label><label class="field">總期數<input data-field="installmentMonths" type="number" min="1" step="1" value="${window.getInstallmentMonths(r)||12}"></label><label class="field">開始月份<input data-field="installmentStartMonth" type="month" value="${window.getInstallmentStartMonth(r)}"></label></div>`:"";
+      return`<div class="edit-row" data-index="${i}"><button class="drag-handle" type="button" title="按住拖移排序" aria-label="按住拖移排序">☰</button><label class="field">項目<input data-field="name" value="${escapeHtml(r.name)}"></label><label class="field">金額<input data-field="amount" type="number" value="${toNumber(r.amount)}"></label><label class="field">幣種<select data-field="currency"><option value="TWD" ${r.currency==="TWD"?"selected":""}>TWD</option><option value="USD" ${r.currency==="USD"?"selected":""}>USD</option></select></label><label class="field">備註<input data-field="note" value="${escapeHtml(r.note||"")}"></label><button class="danger-btn" onclick="removeEditRow(${i})">×</button>${extra}</div>`;
+    }).join("");
+    enableEditRowDrag();openModal("editModal");
+  };
+
+  window.saveEditRows = saveEditRows = function(){
+    if(editModal.dataset.mode==="children"){
+      const savedType=currentNestedType,savedIndex=currentNestedIndex,parent=assetDetails[savedType]?.rows?.[savedIndex];
+      if(parent){parent.children=Array.from(document.querySelectorAll("#editRows .edit-row")).map(row=>({name:row.querySelector('[data-field="name"]').value.trim()||"未命名",amount:toNumber(row.querySelector('[data-field="amount"]').value),note:row.querySelector('[data-field="note"]').value.trim()||"--"}));syncParentAmountFromChildren(savedType,savedIndex)}
+      editModal.dataset.mode="";closeModal("editModal");showAssetDetail(savedType,document.querySelector(`.menu-card[data-asset-type="${savedType}"]`));currentNestedType=savedType;currentNestedIndex=savedIndex;if(savedType==="fixed")showFixedInlineDetail(savedIndex);else showNestedDetail(savedType,savedIndex);saveFinanceData();return;
+    }
+    assetDetails[currentAssetType].rows=Array.from(document.querySelectorAll("#editRows .edit-row")).map(row=>{
+      const src=assetDetails[currentAssetType].rows[Number(row.dataset.index)]||{};
+      const name=row.querySelector('[data-field="name"]').value.trim()||"未命名";
+      const amount=toNumber(row.querySelector('[data-field="amount"]').value);
+      const out={name,amount,currency:row.querySelector('[data-field="currency"]').value,note:row.querySelector('[data-field="note"]').value.trim()||"--",color:colorByType[currentAssetType]||"blue",monthlyChange:src.monthlyChange||0,children:src.children||[]};
+      const totalInput=row.querySelector('[data-field="installmentTotal"]'),monthsInput=row.querySelector('[data-field="installmentMonths"]'),startInput=row.querySelector('[data-field="installmentStartMonth"]');
+      if(currentAssetType==="debt"&&(name.includes("分期")||totalInput||monthsInput||src.installmentTotal)){
+        out.installmentTotal=toNumber(totalInput?.value||src.installmentTotal||amount);
+        out.installmentMonths=Math.max(1,Math.round(toNumber(monthsInput?.value||src.installmentMonths||12)));
+        out.installmentStartMonth=normalizeMonthString(startInput?.value||src.installmentStartMonth||src.installmentStartDate||currentMonthString());
+        window.normalizeInstallmentRow(out);
+      }
+      return out;
+    });
+    editModal.dataset.mode="";closeModal("editModal");showAssetDetail(currentAssetType,document.querySelector(`.menu-card[data-asset-type="${currentAssetType}"]`));saveFinanceData();
+  };
+
+  window.normalizeAllInstallments(false);
+})();
 </script>
 
 <script type="module">
