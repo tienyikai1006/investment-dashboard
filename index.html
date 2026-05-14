@@ -1336,6 +1336,130 @@ Object.assign(window,{showAssetDetail,showAssetOverviewPage,showResearchPage,sho
   })(typeof showNestedDetail==="function"?showNestedDetail:null);
 
   // 讓頁面載入後先用快取匯率，再嘗試抓台銀最新匯率；抓到後自動重算。
+  const quoteText = (id, value, className) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = value;
+    if (className) el.className = className;
+  };
+  const renderQuoteCard = (q, statusText = "") => {
+    if (!q) return;
+    const change = Number(q.change || 0);
+    const hasPrice = Number.isFinite(Number(q.price)) && Number(q.price) > 0;
+    document.getElementById("quoteResult")?.classList.add("show");
+    quoteText("quoteSymbol", q.symbol || "--");
+    quoteText("quoteName", q.name || `${q.symbol || "--"} / ${marketLabel(q.market || currentAddMarket)}`);
+    quoteText("quotePrice", hasPrice ? formatQuotePrice(q) : "手動輸入成本");
+    quoteText("quoteChange", statusText || `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`, `quote-name right ${statusText ? "yellow" : change >= 0 ? "green" : "red"}`);
+    quoteText("quoteRange", q.low52 && q.high52 ? `${formatQuotePrice(q, q.low52)} - ${formatQuotePrice(q, q.high52)}` : "--");
+    quoteText("quoteZone", q.zone || marketLabel(q.market || currentAddMarket));
+    quoteText("quoteEarnings", q.source ? `${q.source} / ${q.earnings || "待更新"}` : (q.earnings || "待更新"));
+    const costInput = document.getElementById("buyCostInput");
+    if (costInput && hasPrice) costInput.value = q.price;
+  };
+  const parseStooqCsvQuote = (text, normalized) => {
+    const rows = String(text || "").trim().split(/\r?\n/);
+    const cols = (rows[1] || "").split(",");
+    const close = Number(cols[6]);
+    if (!Number.isFinite(close) || close <= 0) return null;
+    const known = getStockQuote(normalized) || {};
+    const prev = Number(known.price || close);
+    const low = Number(known.low52 || close);
+    const high = Number(known.high52 || close);
+    return {
+      symbol: normalized,
+      name: known.name || `${normalized} / 美股標的`,
+      price: close,
+      change: prev ? ((close - prev) / prev) * 100 : 0,
+      low52: low,
+      high52: high,
+      currency: "USD",
+      earnings: known.earnings || "待更新",
+      zone: getPriceZone({ price: close, low52: low, high52: high }),
+      candleBase: close,
+      source: "Stooq 即時行情"
+    };
+  };
+  const originalFetchLiveQuoteForSearch = typeof fetchLiveQuote === "function" ? fetchLiveQuote : null;
+  window.fetchLiveQuote = fetchLiveQuote = async function(symbol) {
+    const normalized = normalizeSymbol(symbol);
+    const sq = stooqSymbol(normalized);
+    if (sq) {
+      const stooqUrl = `https://stooq.com/q/l/?s=${encodeURIComponent(sq)}&f=sd2t2ohlcv&h&e=csv`;
+      try {
+        const res = await fetch(stooqUrl, { cache: "no-store" });
+        if (res.ok) {
+          const q = parseStooqCsvQuote(await res.text(), normalized);
+          if (q) return q;
+        }
+      } catch (e) {
+        console.warn("Stooq live quote failed", normalized, e);
+      }
+      try {
+        const proxyRes = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(stooqUrl)}`, { cache: "no-store" });
+        if (proxyRes.ok) {
+          const q = parseStooqCsvQuote(await proxyRes.text(), normalized);
+          if (q) return { ...q, source: "Stooq 即時行情" };
+        }
+      } catch (e) {
+        console.warn("Stooq proxy quote failed", normalized, e);
+      }
+    }
+    return originalFetchLiveQuoteForSearch ? originalFetchLiveQuoteForSearch(normalized) : null;
+  };
+  window.searchStockQuote = searchStockQuote = async function() {
+    const searchInput = document.getElementById("stockSearchInput");
+    const raw = (searchInput?.value || "").trim();
+    const fallback = { us: "TSLA", tw: "2330", crypto: "BTC" }[currentAddMarket] || "TSLA";
+    const symbol = normalizeSymbolByMarket(raw || fallback, currentAddMarket);
+    let q = getStockQuote(symbol) || createGenericQuote(symbol, currentAddMarket);
+    document.getElementById("quoteResult")?.classList.add("show");
+    if (!q) {
+      selectedQuote = null;
+      quoteText("quoteSymbol", symbol || "--");
+      quoteText("quoteName", "代號格式不正確");
+      quoteText("quotePrice", "--");
+      quoteText("quoteChange", `請輸入${marketLabel(currentAddMarket)}代號`, "quote-name right yellow");
+      quoteText("quoteRange", "--");
+      quoteText("quoteZone", "未建立");
+      quoteText("quoteEarnings", "--");
+      const costInput = document.getElementById("buyCostInput");
+      if (costInput) costInput.value = "";
+      return;
+    }
+    q = { ...q, market: currentAddMarket, currency: q.currency || marketCurrency(currentAddMarket) };
+    selectedQuote = q;
+    renderQuoteCard(q, "更新行情中...");
+    const live = await fetchLiveQuote(q.symbol);
+    if (live) {
+      q = { ...q, ...live, market: currentAddMarket, currency: live.currency || q.currency || marketCurrency(currentAddMarket), isGeneric: false };
+      stockQuotes[q.symbol] = q;
+      selectedQuote = q;
+      renderQuoteCard(q);
+      if (usPositions.some(i => i.symbol === q.symbol) && currentAssetType === "investment") renderUsPositions();
+    } else {
+      renderQuoteCard(q, q.isGeneric ? "即時行情讀取失敗，可手動輸入成本" : "");
+    }
+  };
+  document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("stockSearchInput")?.addEventListener("keydown", e => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        window.searchStockQuote();
+      }
+    });
+    document.querySelector(".add-stock-search-box .btn.primary")?.addEventListener("click", e => {
+      e.preventDefault();
+      window.searchStockQuote();
+    });
+  });
+  window.renderResearchSymbols = renderResearchSymbols = function() {
+    const el = document.getElementById("researchSymbolList");
+    if (!el) return;
+    const list = buildResearchSymbols();
+    el.innerHTML = list.length ? list.map((i,idx)=>`<div class="symbol-card" data-symbol-index="${idx}" onclick="showResearchSymbol(${idx})"><div class="symbol-head"><div class="symbol-name">${escapeHtml(i.symbol)}</div><span class="risk-badge">${escapeHtml(i.risk)}</span></div><div class="symbol-sub">${escapeHtml(i.name)}・${escapeHtml(i.price)}</div></div>`).join("") : `<div class="empty-detail">目前還沒有投資標的。</div>`;
+  };
+
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>{renderAfterDataChange?.();refreshBankOfTaiwanRates();},{once:true});
   else {try{renderAfterDataChange?.();}catch(e){} refreshBankOfTaiwanRates();}
 
@@ -1414,168 +1538,4 @@ Object.assign(window,{showAssetDetail,showAssetOverviewPage,showResearchPage,sho
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
   import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-  import { getDatabase, ref, get, set, onValue } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
-
-  const ALLOWED_EMAIL = "tienyikai1006@gmail.com";
-  const DATA_PATH = "finance/investmentDashboard";
-  const firebaseConfig = {
-    apiKey: "AIzaSyBk_uw3tfA16SaC2n7Lx44JPJm-OuOaviA",
-    authDomain: "yikai-private.firebaseapp.com",
-    databaseURL: "https://yikai-private-default-rtdb.firebaseio.com",
-    projectId: "yikai-private",
-    storageBucket: "yikai-private.firebasestorage.app",
-    messagingSenderId: "929733725792",
-    appId: "1:929733725792:web:52d5729e78f872e4dfbd05"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db = getDatabase(app);
-  const provider = new GoogleAuthProvider();
-  provider.setCustomParameters({ prompt: "select_account" });
-
-  const loginBtn = document.getElementById("googleLoginBtn");
-  const logoutBtn = document.getElementById("googleLogoutBtn");
-  const gateLoginBtn = document.getElementById("gateGoogleLoginBtn");
-  const gateLogoutBtn = document.getElementById("gateGoogleLogoutBtn");
-  const authGate = document.getElementById("authGate");
-  const gateStatus = document.getElementById("gateStatus");
-
-  const setGateLocked = (locked) => {
-    document.body.classList.toggle("auth-locked", locked);
-    authGate?.classList.toggle("hidden", !locked);
-    if (locked) window.scrollTo({ top: 0, behavior: "auto" });
-  };
-
-  const syncGateButtons = (loggedIn) => {
-    gateLoginBtn?.classList.toggle("hidden", loggedIn);
-    gateLogoutBtn?.classList.toggle("hidden", !loggedIn);
-  };
-
-  const setStatus = (title, desc = "", kind = "warn") => {
-    if (typeof window.setCloudSyncStatus === "function") window.setCloudSyncStatus(title, desc, kind);
-    else {
-      const el = document.getElementById("cloudStatus");
-      if (el) { el.className = `cloud-status ${kind}`; el.innerHTML = `<strong>${title}</strong><span>${desc}</span>`; }
-    }
-    if (gateStatus) { gateStatus.className = `cloud-status ${kind}`; gateStatus.innerHTML = `<strong>${title}</strong><span>${desc}</span>`; }
-  };
-
-  let dataRef = null;
-  let ignoreNextSnapshot = false;
-
-  // Google 登入：優先彈窗；如果瀏覽器阻擋彈窗，就改用跳轉登入
-  async function startGoogleLogin() {
-    if (location.protocol === "file:") {
-      const msg = "你現在是直接開本機 HTML 檔案（file://），Google 登入可能不會正常運作。請先上傳到 GitHub Pages，或用 localhost 開啟。";
-      setStatus("登入失敗", msg, "err");
-      alert(msg);
-      return;
-    }
-
-    try {
-      setStatus("登入中", "正在開啟 Google 登入視窗", "warn");
-      await signInWithPopup(auth, provider);
-    } catch (error) {
-      console.error("Google 登入失敗", error);
-      const code = String(error.code || "");
-      if (code.includes("popup-blocked") || code.includes("popup-closed") || code.includes("operation-not-supported")) {
-        setStatus("改用跳轉登入", "瀏覽器阻擋彈窗，改用 Google 跳轉登入", "warn");
-        await signInWithRedirect(auth, provider);
-        return;
-      }
-
-      let msg = error.message || "請確認 Google 登入已啟用";
-      if (code.includes("unauthorized-domain")) msg = "目前網址未加入 Firebase 授權網域。請到 Authentication → Settings → Authorized domains 新增你的網址，例如 tienyikai1006.github.io。";
-      setStatus("登入失敗", msg, "err");
-      alert(msg);
-    }
-  }
-
-  loginBtn?.addEventListener("click", startGoogleLogin);
-  gateLoginBtn?.addEventListener("click", startGoogleLogin);
-
-  getRedirectResult(auth).catch((error) => {
-    console.error("Google 跳轉登入失敗", error);
-    let msg = error.message || "Google 跳轉登入失敗";
-    if (String(error.code || "").includes("unauthorized-domain")) msg = "目前網址未加入 Firebase 授權網域，請到 Authentication → Settings → Authorized domains 新增你的 GitHub Pages 網域。";
-    setStatus("登入失敗", msg, "err");
-  });
-
-  logoutBtn?.addEventListener("click", async () => {
-    await signOut(auth);
-  });
-
-  gateLogoutBtn?.addEventListener("click", async () => {
-    await signOut(auth);
-  });
-
-  window.saveFinanceToFirebase = async (data, forceAlert = false) => {
-    if (!dataRef) {
-      setStatus("尚未登入", "請先 Google 登入後再同步", "warn");
-      if (forceAlert) alert("請先 Google 登入");
-      return;
-    }
-    try {
-      ignoreNextSnapshot = true;
-      await set(dataRef, { ...data, updatedAt: new Date().toISOString() });
-      setStatus("已同步雲端", "Firebase 已儲存最新資料", "ok");
-      if (forceAlert) alert("已覆蓋並同步到 Firebase。");
-      setTimeout(() => { ignoreNextSnapshot = false; }, 800);
-    } catch (error) {
-      console.error("Firebase 儲存失敗", error);
-      setStatus("同步失敗", error.message || "請檢查規則與登入狀態", "err");
-      if (forceAlert) alert("同步失敗：" + (error.message || "未知錯誤"));
-    }
-  };
-
-  onAuthStateChanged(auth, async (user) => {
-    if (!user) {
-      dataRef = null;
-      loginBtn?.classList.remove("hidden");
-      logoutBtn?.classList.add("hidden");
-      syncGateButtons(false);
-      setGateLocked(true);
-      setStatus("尚未登入", "登入 Google 後才可進入私人頁面", "warn");
-      return;
-    }
-
-    if (user.email !== ALLOWED_EMAIL) {
-      loginBtn?.classList.remove("hidden");
-      logoutBtn?.classList.add("hidden");
-      syncGateButtons(false);
-      setGateLocked(true);
-      setStatus("帳號不允許", `目前登入：${user.email || "未知帳號"}`, "err");
-      alert(`這份金融資料只允許 ${ALLOWED_EMAIL} 使用。`);
-      await signOut(auth);
-      return;
-    }
-
-    loginBtn?.classList.add("hidden");
-    logoutBtn?.classList.remove("hidden");
-    syncGateButtons(true);
-    setGateLocked(false);
-    setStatus("已登入", user.email, "ok");
-    dataRef = ref(db, DATA_PATH);
-
-    try {
-      const snap = await get(dataRef);
-      if (snap.exists()) {
-        window.applyFinanceData?.(snap.val(), { fromCloud: true });
-      } else {
-        setStatus("雲端尚無資料", "會先上傳目前這份 HTML 的資料", "warn");
-        await window.saveFinanceToFirebase?.(window.collectFinanceData?.() || {}, false);
-      }
-
-      onValue(dataRef, (snapshot) => {
-        if (!snapshot.exists() || ignoreNextSnapshot) return;
-        window.applyFinanceData?.(snapshot.val(), { fromCloud: true });
-      });
-    } catch (error) {
-      console.error("Firebase 讀取失敗", error);
-      setStatus("讀取失敗", error.message || "請檢查 Realtime Database Rules", "err");
-    }
-  });
-</script>
-</body>
-</html>
+  import { getDatabase, ref, get, set, onValue } f
